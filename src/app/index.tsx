@@ -95,7 +95,9 @@ function Content() {
           }}
           asChild
         >
-          <AppButton>Timed</AppButton>
+          <AppButton>
+            <Text>Timed</Text>
+          </AppButton>
         </Link>
         <Link
           href={{
@@ -104,7 +106,9 @@ function Content() {
           }}
           asChild
         >
-          <AppButton>Open-ended</AppButton>
+          <AppButton>
+            <Text>Open-ended</Text>
+          </AppButton>
         </Link>
       </View>
     </View>
