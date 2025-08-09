@@ -59,6 +59,9 @@ importers:
       tailwindcss:
         specifier: ^3.4.0
         version: 3.4.17
+      zod:
+        specifier: 4.0.16
+        version: 4.0.16
     devDependencies:
       '@babel/core':
         specifier: ^7.20.0
@@ -3141,6 +3144,9 @@ packages:
   yocto-queue@0.1.0:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
     engines: {node: '>=10'}
+
+  zod@4.0.16:
+    resolution: {integrity: sha512-Djo/cM339grjI7/HmN+ixYO2FzEMcWr/On50UlQ/RjrWK1I/hPpWhpC76heCptnRFpH0LMwrEbUY50HDc0V8wg==}
 
 snapshots:
 
@@ -6713,3 +6719,5 @@ snapshots:
       yargs-parser: 21.1.1
 
   yocto-queue@0.1.0: {}
+
+  zod@4.0.16: {}

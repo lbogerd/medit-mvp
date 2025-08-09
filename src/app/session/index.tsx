@@ -6,12 +6,10 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-
-type Mode = { type: "timed"; minutes: number } | { type: "open" };
-export type Intention = "grounded" | "focus" | "gratitude" | "none";
+import { z } from "zod";
 
 // Map intention to intro file; use grounded as default for "none"
-const introMap: Record<Exclude<Intention, "none">, any> = {
+const introMap = {
   grounded: require("../../../assets/grounded_intro.mp3"),
   focus: require("../../../assets/grounded_intro.mp3"), // TODO: replace with focus-specific if available
   gratitude: require("../../../assets/grounded_intro.mp3"), // TODO: replace with gratitude-specific if available
@@ -21,52 +19,47 @@ function pad(n: number) {
   return n < 10 ? `0${n}` : `${n}`;
 }
 
+// Use Zod to normalize/validate params coming as string|string[]
+const pickFirst = (v: unknown) => (Array.isArray(v) ? v[0] : v);
+const ParamsSchema = z.object({
+  type: z
+    .preprocess(pickFirst, z.enum(["timed", "open"]).catch("timed"))
+    .optional()
+    .default("timed"),
+  minutes: z
+    .preprocess(pickFirst, z.coerce.number().int().positive().catch(10))
+    .optional()
+    .default(10),
+  intention: z
+    .preprocess(
+      pickFirst,
+      z.enum(["grounded", "focus", "gratitude", "none"]).catch("grounded")
+    )
+    .optional()
+    .default("grounded"),
+});
+
+export type Mode = { type: "open" } | z.infer<typeof ParamsSchema>;
+
 export default function SessionScreen() {
   const router = useRouter();
-  const {
-    type,
-    minutes,
-    intention: intentionParam,
-  } = useLocalSearchParams<{
+  const raw = useLocalSearchParams<{
     type?: string | string[];
     minutes?: string | string[];
     intention?: string | string[];
   }>();
 
-  // Normalize search params from string|string[] to concrete values
-  const normalizedType = Array.isArray(type) ? type[0] : type;
-  const normalizedMinutes = Array.isArray(minutes) ? minutes[0] : minutes;
-  const normalizedIntention = Array.isArray(intentionParam)
-    ? intentionParam[0]
-    : intentionParam;
-
-  const parsedMinutes = normalizedMinutes
-    ? parseInt(normalizedMinutes, 10)
-    : NaN;
-
+  const parsed = ParamsSchema.parse(raw);
   const mode: Mode =
-    normalizedType === "open"
-      ? { type: "open" }
-      : {
-          type: "timed",
-          minutes:
-            Number.isFinite(parsedMinutes) && parsedMinutes > 0
-              ? parsedMinutes
-              : 10,
-        };
-
-  const intention: Intention =
-    normalizedIntention === "focus" ||
-    normalizedIntention === "gratitude" ||
-    normalizedIntention === "none"
-      ? (normalizedIntention as Intention)
-      : "grounded";
+    parsed.type === "open"
+      ? { type: "open", intention: parsed.intention }
+      : { type: "timed", minutes: parsed.minutes, intention: parsed.intention };
 
   // setup audio player for intro (use grounded if "none")
   const introSource =
-    intention === "none"
+    parsed.intention === "none"
       ? introMap.grounded
-      : introMap[intention as Exclude<Intention, "none">];
+      : introMap[parsed.intention];
   const player = useAudioPlayer(introSource);
   const status = useAudioPlayerStatus(player);
 
@@ -83,7 +76,7 @@ export default function SessionScreen() {
     const fadeInAndPlay = async () => {
       try {
         player.volume = 0;
-        await player.play();
+        player.play();
         const steps = 20,
           dur = 600,
           stepMs = dur / steps;
@@ -99,9 +92,10 @@ export default function SessionScreen() {
     fadeInAndPlay();
     return () => {
       cancelled = true;
+
       (async () => {
         try {
-          await player.pause();
+          player.pause();
         } catch {}
       })();
     };
@@ -154,14 +148,15 @@ export default function SessionScreen() {
     // also pause/resume intro if it's still playing
     try {
       if (!status?.isLoaded) return;
+
       if (!paused && player.playing) {
-        await player.pause();
+        player.pause();
       } else if (
         paused &&
         player.paused &&
         player.currentTime < (player.duration ?? Infinity)
       ) {
-        await player.play();
+        player.play();
       }
     } catch {}
   };
@@ -172,9 +167,9 @@ export default function SessionScreen() {
   };
 
   const intentionLabel =
-    intention === "none"
+    parsed.intention === "none"
       ? "Open"
-      : intention[0].toUpperCase() + intention.slice(1);
+      : parsed.intention[0].toUpperCase() + parsed.intention.slice(1);
 
   return (
     <View className="flex-1 bg-black px-6 pt-14">
