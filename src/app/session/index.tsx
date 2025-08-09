@@ -18,6 +18,14 @@ const introMap: Record<Intention, AudioSource> = {
   none: require("../../../assets/grounded_intro.mp3"), // TODO: replace with open-specific if available
 };
 
+// Map intention to outro file; default to grounded outro when unknown
+const outroMap: Record<Intention, AudioSource> = {
+  grounded: require("../../../assets/grounded_outro.mp3"),
+  focus: require("../../../assets/grounded_outro.mp3"),
+  gratitude: require("../../../assets/grounded_outro.mp3"),
+  none: require("../../../assets/grounded_outro.mp3"),
+};
+
 function pad(n: number) {
   return n < 10 ? `0${n}` : `${n}`;
 }
@@ -63,9 +71,26 @@ export default function SessionScreen() {
   const player = useAudioPlayer(introSource);
   const status = useAudioPlayerStatus(player);
 
+  // setup audio player for outro
+  const outroSource = outroMap[parsed.intention];
+  const outroPlayer = useAudioPlayer(outroSource);
+  const outroStatus = useAudioPlayerStatus(outroPlayer);
+
   // ensure playback works with device silent switch
   useEffect(() => {
     setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+  }, []);
+
+  // general cleanup on unmount: pause any playing audio
+  useEffect(() => {
+    return () => {
+      try {
+        player.pause();
+      } catch {}
+      try {
+        outroPlayer.pause();
+      } catch {}
+    };
   }, []);
 
   // track whether the session has started (user click) and if intro has been played once
@@ -115,9 +140,21 @@ export default function SessionScreen() {
     }
   }, [status?.isLoaded, player.duration]);
 
+  // Track outro duration (in seconds)
+  const [outroDurationSec, setOutroDurationSec] = useState(0);
+  useEffect(() => {
+    if (!outroStatus?.isLoaded) return;
+    const duration = Number(outroPlayer.duration ?? 0);
+    if (Number.isFinite(duration) && duration > 0) {
+      setOutroDurationSec(Math.round(duration));
+    }
+  }, [outroStatus?.isLoaded, outroPlayer.duration]);
+
   const baseSec = mode.type === "timed" ? Math.max(1, mode.minutes) * 60 : 0;
   const totalSec =
-    mode.type === "timed" ? baseSec + introDurationSec : Infinity;
+    mode.type === "timed"
+      ? baseSec + introDurationSec + outroDurationSec
+      : Infinity;
 
   const [elapsed, setElapsed] = useState(0);
   const [paused, setPaused] = useState(true);
@@ -134,6 +171,67 @@ export default function SessionScreen() {
       intervalRef.current = null;
     };
   }, [paused, finished]);
+
+  // derived section boundaries
+  const meditationStartSec = introDurationSec;
+  const outroStartSec =
+    introDurationSec + (mode.type === "timed" ? baseSec : 0);
+
+  // If we cross into meditation, ensure intro is paused
+  useEffect(() => {
+    if (!status?.isLoaded) return;
+    if (elapsed >= meditationStartSec && player.playing) {
+      try {
+        player.pause();
+      } catch {}
+    }
+  }, [elapsed, meditationStartSec, status?.isLoaded]);
+
+  // Auto-play outro when entering outro section for timed sessions
+  const outroStartedRef = useRef(false);
+  const fadeInAndPlayOutro = async () => {
+    try {
+      outroPlayer.volume = 0;
+      outroPlayer.play();
+      const steps = 20,
+        dur = 600,
+        stepMs = dur / steps;
+      for (let i = 1; i <= steps; i++) {
+        outroPlayer.volume = (0.85 * i) / steps;
+        await new Promise((r) => setTimeout(r, stepMs));
+      }
+    } catch (e) {
+      console.warn("Outro play failed:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (
+      !started ||
+      paused ||
+      mode.type !== "timed" ||
+      !outroStatus?.isLoaded ||
+      outroDurationSec <= 0
+    )
+      return;
+    // if we are within the outro window and haven't started it yet
+    if (
+      elapsed >= outroStartSec &&
+      elapsed < outroStartSec + outroDurationSec &&
+      !outroStartedRef.current
+    ) {
+      outroStartedRef.current = true;
+      fadeInAndPlayOutro();
+    }
+  }, [
+    started,
+    paused,
+    elapsed,
+    outroStatus?.isLoaded,
+    outroDurationSec,
+    outroStartSec,
+    mode.type,
+  ]);
 
   // derive display
   const { paddedMinutes, paddedSeconds } = useMemo(() => {
@@ -171,27 +269,38 @@ export default function SessionScreen() {
     if (paused) {
       setPaused(false);
       try {
+        const inIntro = elapsed < meditationStartSec;
+        const inOutro =
+          mode.type === "timed" &&
+          elapsed >= outroStartSec &&
+          elapsed < outroStartSec + outroDurationSec;
         if (
+          inIntro &&
           status?.isLoaded &&
           player.paused &&
           player.currentTime < (player.duration ?? Infinity)
         ) {
           player.play();
+        } else if (
+          inOutro &&
+          outroStatus?.isLoaded &&
+          outroPlayer.paused &&
+          outroPlayer.currentTime < (outroPlayer.duration ?? Infinity)
+        ) {
+          outroPlayer.play();
         }
       } catch {}
     } else {
       setPaused(true);
       try {
-        if (status?.isLoaded && player.playing) {
-          player.pause();
-        }
+        if (status?.isLoaded && player.playing) player.pause();
+        if (outroStatus?.isLoaded && outroPlayer.playing) outroPlayer.pause();
       } catch {}
     }
   };
   const onFinish = () => {
     setPaused(true);
-    // later: navigate to Done with history save + outro
-    router.back();
+    router.navigate("/");
   };
 
   const intentionLabel =
@@ -203,7 +312,6 @@ export default function SessionScreen() {
 
   // Seeking between sections
   const meditationDurationSec = mode.type === "timed" ? baseSec : 0;
-  const outroDurationSec = 0; // placeholder until outro is implemented
   const onSeekTo = (
     seconds: number,
     section: "intro" | "meditation" | "outro"
@@ -215,8 +323,16 @@ export default function SessionScreen() {
       if (section === "intro" && status?.isLoaded) {
         player.seekTo(0);
         if (!paused && started) player.play();
-      } else if (status?.isLoaded) {
-        if (player.playing) player.pause();
+        if (outroStatus?.isLoaded && outroPlayer.playing) outroPlayer.pause();
+      } else if (section === "meditation") {
+        if (status?.isLoaded && player.playing) player.pause();
+        if (outroStatus?.isLoaded && outroPlayer.playing) outroPlayer.pause();
+      } else if (section === "outro") {
+        if (status?.isLoaded && player.playing) player.pause();
+        if (outroStatus?.isLoaded) {
+          outroPlayer.seekTo(0);
+          if (!paused && started) outroPlayer.play();
+        }
       }
     } catch {}
 
