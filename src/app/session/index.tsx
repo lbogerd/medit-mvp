@@ -1,3 +1,4 @@
+import { SessionProgressBar } from "@/components/SessionProgressBar";
 import {
   AudioSource,
   setAudioModeAsync,
@@ -57,11 +58,8 @@ export default function SessionScreen() {
       ? { type: "open", intention: parsed.intention }
       : { type: "timed", minutes: parsed.minutes, intention: parsed.intention };
 
-  // setup audio player for intro (use grounded if "none")
-  const introSource =
-    parsed.intention === "none"
-      ? introMap.grounded
-      : introMap[parsed.intention];
+  // setup audio player for intro
+  const introSource = introMap[parsed.intention];
   const player = useAudioPlayer(introSource);
   const status = useAudioPlayerStatus(player);
 
@@ -70,41 +68,56 @@ export default function SessionScreen() {
     setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
   }, []);
 
-  // play intro once loaded, with gentle fade in
-  useEffect(() => {
-    if (!status?.isLoaded) return;
-    let cancelled = false;
+  // track whether the session has started (user click) and if intro has been played once
+  const [started, setStarted] = useState(false);
+  const introPlayedRef = useRef(false);
 
-    const fadeInAndPlay = async () => {
-      try {
-        player.volume = 0;
-        player.play();
-        const steps = 20,
-          dur = 600,
-          stepMs = dur / steps;
-        for (let i = 1; i <= steps && !cancelled; i++) {
-          player.volume = (0.85 * i) / steps;
-          await new Promise((r) => setTimeout(r, stepMs));
-        }
-      } catch (e) {
-        console.warn("Intro play failed:", e);
+  // helper to fade in and play intro
+  const fadeInAndPlay = async () => {
+    try {
+      player.volume = 0;
+      player.play();
+      const steps = 20,
+        dur = 600,
+        stepMs = dur / steps;
+      for (let i = 1; i <= steps; i++) {
+        player.volume = (0.85 * i) / steps;
+        await new Promise((r) => setTimeout(r, stepMs));
       }
-    };
+    } catch (e) {
+      console.warn("Intro play failed:", e);
+    }
+  };
 
+  // when user has started and audio is loaded, play intro once
+  useEffect(() => {
+    if (!started || !status?.isLoaded || introPlayedRef.current) return;
+    introPlayedRef.current = true;
     fadeInAndPlay();
     return () => {
-      cancelled = true;
-
-      (async () => {
-        try {
-          player.pause();
-        } catch {}
-      })();
+      // pause on unmount
+      try {
+        player.pause();
+      } catch {}
     };
-  }, [status?.isLoaded]);
+  }, [started, status?.isLoaded]);
 
+  // Track intro duration (in seconds) once loaded and include it in timer
+  const [introDurationSec, setIntroDurationSec] = useState(0);
+  useEffect(() => {
+    if (!status?.isLoaded) return;
+    const duration = Number(player.duration ?? 0);
+
+    console.log("Intro duration (seconds):", duration);
+
+    if (Number.isFinite(duration) && duration > 0) {
+      setIntroDurationSec(Math.round(duration));
+    }
+  }, [status?.isLoaded, player.duration]);
+
+  const baseSec = mode.type === "timed" ? Math.max(1, mode.minutes) * 60 : 0;
   const totalSec =
-    mode.type === "timed" ? Math.max(1, mode.minutes) * 60 : Infinity;
+    mode.type === "timed" ? baseSec + introDurationSec : Infinity;
 
   const [elapsed, setElapsed] = useState(0);
   const [paused, setPaused] = useState(true);
@@ -145,22 +158,35 @@ export default function SessionScreen() {
     }
   }, [finished]);
 
-  const onPauseToggle = async () => {
-    setPaused((p) => !p);
-    // also pause/resume intro if it's still playing
-    try {
-      if (!status?.isLoaded) return;
+  const onPrimaryPress = async () => {
+    // first click: start timer + play intro with fade
+    if (!started) {
+      setStarted(true);
+      setPaused(false);
+      if (status?.isLoaded) await fadeInAndPlay();
+      return;
+    }
 
-      if (!paused && player.playing) {
-        player.pause();
-      } else if (
-        paused &&
-        player.paused &&
-        player.currentTime < (player.duration ?? Infinity)
-      ) {
-        player.play();
-      }
-    } catch {}
+    // subsequent clicks: toggle pause/resume
+    if (paused) {
+      setPaused(false);
+      try {
+        if (
+          status?.isLoaded &&
+          player.paused &&
+          player.currentTime < (player.duration ?? Infinity)
+        ) {
+          player.play();
+        }
+      } catch {}
+    } else {
+      setPaused(true);
+      try {
+        if (status?.isLoaded && player.playing) {
+          player.pause();
+        }
+      } catch {}
+    }
   };
   const onFinish = () => {
     setPaused(true);
@@ -172,6 +198,31 @@ export default function SessionScreen() {
     parsed.intention === "none"
       ? "Open"
       : parsed.intention[0].toUpperCase() + parsed.intention.slice(1);
+
+  const primaryLabel = !started ? "Start" : paused ? "Continue" : "Pause";
+
+  // Seeking between sections
+  const meditationDurationSec = mode.type === "timed" ? baseSec : 0;
+  const outroDurationSec = 0; // placeholder until outro is implemented
+  const onSeekTo = (
+    seconds: number,
+    section: "intro" | "meditation" | "outro"
+  ) => {
+    // Set elapsed to the section start
+    setElapsed(seconds);
+    // Audio: if intro section, also seek audio to start; otherwise pause intro
+    try {
+      if (section === "intro" && status?.isLoaded) {
+        player.seekTo(0);
+        if (!paused && started) player.play();
+      } else if (status?.isLoaded) {
+        if (player.playing) player.pause();
+      }
+    } catch {}
+
+    // Auto-unpause if user seeks during an active session (after started)
+    if (started) setPaused(false);
+  };
 
   return (
     <View className="flex-1 bg-black px-6 pt-14">
@@ -189,17 +240,22 @@ export default function SessionScreen() {
         <Text className="text-neutral-400 mt-2">
           {mode.type === "timed" ? "remaining" : "elapsed"}
         </Text>
+        <SessionProgressBar
+          introDuration={introDurationSec}
+          meditationDuration={meditationDurationSec}
+          outroDuration={outroDurationSec}
+          elapsed={elapsed}
+          onSeekTo={onSeekTo}
+        />
       </View>
 
       {/* Controls */}
       <View className="pb-10">
         <Pressable
-          onPress={onPauseToggle}
+          onPress={onPrimaryPress}
           className="bg-white/10 rounded-2xl py-4 items-center mb-3 border border-white/10"
         >
-          <Text className="text-white text-lg font-medium">
-            {paused ? "Continue" : "Pause"}
-          </Text>
+          <Text className="text-white text-lg font-medium">{primaryLabel}</Text>
         </Pressable>
 
         <Pressable
