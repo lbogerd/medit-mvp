@@ -9,6 +9,7 @@ export type SessionProgressBarProps = {
   outroDuration: number; // seconds (0 for now)
   elapsed: number; // seconds
   onSeekTo: (seconds: number, section: SectionKey) => void;
+  progressColor?: string; // hex/rgb color for progress overlay
 };
 
 export function SessionProgressBar({
@@ -17,6 +18,7 @@ export function SessionProgressBar({
   outroDuration,
   elapsed,
   onSeekTo,
+  progressColor = "#ff6b4d",
 }: SessionProgressBarProps) {
   const { total, introStart, meditationStart, outroStart, progressFrac } =
     useMemo(() => {
@@ -38,20 +40,20 @@ export function SessionProgressBar({
   const outroFlex = Math.max(1, outroDuration || 1);
 
   return (
-    <View className="w-full mt-4" style={{ height: 18 }}>
+  <View className="w-full mt-6" style={{ height: 18 }}>
       <View className="relative w-full h-full">
         {/* Background segmented bar */}
         <View className="absolute inset-0 flex-row overflow-hidden rounded-full">
-          <View className="bg-white/10" style={{ flex: introFlex }} />
-          <View className="bg-white/20" style={{ flex: medFlex }} />
-          <View className="bg-white/10" style={{ flex: outroFlex }} />
+      <View className="bg-gray-200" style={{ flex: introFlex }} />
+      <View className="bg-gray-300" style={{ flex: medFlex }} />
+      <View className="bg-gray-200" style={{ flex: outroFlex }} />
         </View>
 
         {/* Progress fill overlay */}
         <View
           pointerEvents="none"
-          className="absolute left-0 top-0 bottom-0 bg-white/30 rounded-full"
-          style={{ width: `${progressFrac * 100}%` }}
+          className="absolute left-0 top-0 bottom-0 rounded-full"
+          style={{ width: `${progressFrac * 100}%`, backgroundColor: progressColor }}
         />
 
         {/* Touch targets for each segment */}

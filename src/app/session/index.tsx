@@ -1,4 +1,8 @@
 import { SessionProgressBar } from "@/components/SessionProgressBar";
+import { EtherealBackground } from "@/components/EtherealBackground";
+import { TimerRing } from "@/components/TimerRing";
+import { IntentionBadge } from "@/components/IntentionBadge";
+import { ConfirmModal } from "@/components/ConfirmModal";
 import {
   AudioSource,
   setAudioModeAsync,
@@ -7,7 +11,8 @@ import {
 } from "expo-audio";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Switch, Text, View } from "react-native";
+import * as Haptics from "expo-haptics";
 import { z } from "zod";
 
 // Map intention to intro file; use grounded as default for "none"
@@ -32,6 +37,14 @@ function pad(n: number) {
 
 const IntentionSchema = z.enum(["grounded", "focus", "gratitude", "none"]);
 export type Intention = z.infer<typeof IntentionSchema>;
+
+// Intention accent colors
+const accentByIntention: Record<Intention, string> = {
+  grounded: "#14b8a6", // teal
+  focus: "#3b82f6", // blue
+  gratitude: "#8b5cf6", // violet
+  none: "#ff6b4d", // default to sunset accent
+};
 
 // Use Zod to normalize/validate params coming as string|string[]
 const pickFirst = (v: unknown) => (Array.isArray(v) ? v[0] : v);
@@ -67,12 +80,14 @@ export default function SessionScreen() {
       : { type: "timed", minutes: parsed.minutes, intention: parsed.intention };
 
   // setup audio player for intro
-  const introSource = introMap[parsed.intention];
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const introSource = voiceEnabled ? introMap[parsed.intention] : (null as any);
   const player = useAudioPlayer(introSource);
   const status = useAudioPlayerStatus(player);
 
   // setup audio player for outro
-  const outroSource = outroMap[parsed.intention];
+  const outroSource = voiceEnabled ? outroMap[parsed.intention] : (null as any);
   const outroPlayer = useAudioPlayer(outroSource);
   const outroStatus = useAudioPlayerStatus(outroPlayer);
 
@@ -100,11 +115,12 @@ export default function SessionScreen() {
   // helper to fade in and play intro
   const fadeInAndPlay = async () => {
     try {
+      if (!voiceEnabled) return;
       player.volume = 0;
       player.play();
-      const steps = 20,
-        dur = 600,
-        stepMs = dur / steps;
+      const steps = 20;
+      const dur = 600;
+      const stepMs = dur / steps;
       for (let i = 1; i <= steps; i++) {
         player.volume = (0.85 * i) / steps;
         await new Promise((r) => setTimeout(r, stepMs));
@@ -116,16 +132,15 @@ export default function SessionScreen() {
 
   // when user has started and audio is loaded, play intro once
   useEffect(() => {
-    if (!started || !status?.isLoaded || introPlayedRef.current) return;
+    if (!voiceEnabled || !started || !status?.isLoaded || introPlayedRef.current) return;
     introPlayedRef.current = true;
     fadeInAndPlay();
     return () => {
-      // pause on unmount
       try {
         player.pause();
       } catch {}
     };
-  }, [started, status?.isLoaded]);
+  }, [started, status?.isLoaded, voiceEnabled]);
 
   // Track intro duration (in seconds) once loaded and include it in timer
   const [introDurationSec, setIntroDurationSec] = useState(0);
@@ -153,7 +168,7 @@ export default function SessionScreen() {
   const baseSec = mode.type === "timed" ? Math.max(1, mode.minutes) * 60 : 0;
   const totalSec =
     mode.type === "timed"
-      ? baseSec + introDurationSec + outroDurationSec
+      ? baseSec + (voiceEnabled ? introDurationSec + outroDurationSec : 0)
       : Infinity;
 
   const [elapsed, setElapsed] = useState(0);
@@ -173,19 +188,19 @@ export default function SessionScreen() {
   }, [paused, finished]);
 
   // derived section boundaries
-  const meditationStartSec = introDurationSec;
+  const meditationStartSec = voiceEnabled ? introDurationSec : 0;
   const outroStartSec =
-    introDurationSec + (mode.type === "timed" ? baseSec : 0);
+    (voiceEnabled ? introDurationSec : 0) + (mode.type === "timed" ? baseSec : 0);
 
   // If we cross into meditation, ensure intro is paused
   useEffect(() => {
-    if (!status?.isLoaded) return;
+    if (!voiceEnabled || !status?.isLoaded) return;
     if (elapsed >= meditationStartSec && player.playing) {
       try {
         player.pause();
       } catch {}
     }
-  }, [elapsed, meditationStartSec, status?.isLoaded]);
+  }, [elapsed, meditationStartSec, status?.isLoaded, voiceEnabled]);
 
   // Auto-play outro when entering outro section for timed sessions
   const outroStartedRef = useRef(false);
@@ -210,6 +225,7 @@ export default function SessionScreen() {
       !started ||
       paused ||
       mode.type !== "timed" ||
+      !voiceEnabled ||
       !outroStatus?.isLoaded ||
       outroDurationSec <= 0
     )
@@ -261,21 +277,25 @@ export default function SessionScreen() {
     if (!started) {
       setStarted(true);
       setPaused(false);
-      if (status?.isLoaded) await fadeInAndPlay();
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      if (voiceEnabled && status?.isLoaded) await fadeInAndPlay();
       return;
     }
 
     // subsequent clicks: toggle pause/resume
     if (paused) {
       setPaused(false);
+      Haptics.selectionAsync().catch(() => {});
       try {
         const inIntro = elapsed < meditationStartSec;
         const inOutro =
           mode.type === "timed" &&
           elapsed >= outroStartSec &&
           elapsed < outroStartSec + outroDurationSec;
+
         if (
           inIntro &&
+          voiceEnabled &&
           status?.isLoaded &&
           player.paused &&
           player.currentTime < (player.duration ?? Infinity)
@@ -283,6 +303,7 @@ export default function SessionScreen() {
           player.play();
         } else if (
           inOutro &&
+          voiceEnabled &&
           outroStatus?.isLoaded &&
           outroPlayer.paused &&
           outroPlayer.currentTime < (outroPlayer.duration ?? Infinity)
@@ -292,13 +313,19 @@ export default function SessionScreen() {
       } catch {}
     } else {
       setPaused(true);
+      Haptics.selectionAsync().catch(() => {});
+
       try {
-        if (status?.isLoaded && player.playing) player.pause();
-        if (outroStatus?.isLoaded && outroPlayer.playing) outroPlayer.pause();
+        if (voiceEnabled && status?.isLoaded && player.playing) player.pause();
+        if (voiceEnabled && outroStatus?.isLoaded && outroPlayer.playing) outroPlayer.pause();
       } catch {}
     }
   };
   const onFinish = () => {
+    if (!finished) {
+      setShowConfirm(true);
+      return;
+    }
     setPaused(true);
     router.navigate("/");
   };
@@ -320,16 +347,17 @@ export default function SessionScreen() {
     setElapsed(seconds);
     // Audio: if intro section, also seek audio to start; otherwise pause intro
     try {
-      if (section === "intro" && status?.isLoaded) {
+      if (voiceEnabled && section === "intro" && status?.isLoaded) {
         player.seekTo(0);
+
         if (!paused && started) player.play();
-        if (outroStatus?.isLoaded && outroPlayer.playing) outroPlayer.pause();
+        if (voiceEnabled && outroStatus?.isLoaded && outroPlayer.playing) outroPlayer.pause();
       } else if (section === "meditation") {
-        if (status?.isLoaded && player.playing) player.pause();
-        if (outroStatus?.isLoaded && outroPlayer.playing) outroPlayer.pause();
+        if (voiceEnabled && status?.isLoaded && player.playing) player.pause();
+        if (voiceEnabled && outroStatus?.isLoaded && outroPlayer.playing) outroPlayer.pause();
       } else if (section === "outro") {
-        if (status?.isLoaded && player.playing) player.pause();
-        if (outroStatus?.isLoaded) {
+        if (voiceEnabled && status?.isLoaded && player.playing) player.pause();
+        if (voiceEnabled && outroStatus?.isLoaded) {
           outroPlayer.seekTo(0);
           if (!paused && started) outroPlayer.play();
         }
@@ -341,46 +369,81 @@ export default function SessionScreen() {
   };
 
   return (
-    <View className="flex-1 bg-black px-6 pt-14">
+    <View className="flex-1 bg-sunset-50">
+      <EtherealBackground />
+
       {/* Top bar */}
-      <View className="flex-row justify-between items-center">
-        <Text className="text-neutral-400 text-base">Session</Text>
-        <Text className="text-neutral-400 text-base">{intentionLabel}</Text>
+      <View className="px-6 pt-14 flex-row justify-between items-center">
+        <Text className="text-base text-gray-700">Session</Text>
+        <IntentionBadge value={parsed.intention} />
       </View>
 
-      {/* Timer */}
-      <View className="flex-1 items-center justify-center">
-        <Text className="text-white text-[80px] font-semibold tracking-widest">
-          {paddedMinutes}:{paddedSeconds}
-        </Text>
-        <Text className="text-neutral-400 mt-2">
-          {mode.type === "timed" ? "remaining" : "elapsed"}
-        </Text>
+      {/* Timer + Ring */}
+      <View className="flex-1 items-center justify-center px-6">
+        <TimerRing
+          size={280}
+          stroke={16}
+          progress={mode.type === "timed" ? Math.min(1, elapsed / totalSec) : 0}
+          trackColor="#f3f4f6"
+          progressColor={accentByIntention[parsed.intention]}
+        />
+        <View className="absolute items-center">
+          <Text className="text-6xl font-semibold text-gray-900">
+            {paddedMinutes}:{paddedSeconds}
+          </Text>
+          <Text className="text-gray-600 mt-1">
+            {mode.type === "timed" ? "remaining" : "elapsed"}
+          </Text>
+        </View>
+
         <SessionProgressBar
-          introDuration={introDurationSec}
+          introDuration={voiceEnabled ? introDurationSec : 0}
           meditationDuration={meditationDurationSec}
-          outroDuration={outroDurationSec}
+          outroDuration={voiceEnabled ? outroDurationSec : 0}
           elapsed={elapsed}
           onSeekTo={onSeekTo}
+          progressColor={accentByIntention[parsed.intention]}
         />
       </View>
 
       {/* Controls */}
-      <View className="pb-10">
+      <View className="px-6 pb-10 gap-3">
         <Pressable
           onPress={onPrimaryPress}
-          className="bg-white/10 rounded-2xl py-4 items-center mb-3 border border-white/10"
+          className="rounded-full py-4 items-center border border-white/60 bg-white/70 shadow-glass"
         >
-          <Text className="text-white text-lg font-medium">{primaryLabel}</Text>
+          <Text className="text-gray-900 text-lg font-medium">{primaryLabel}</Text>
         </Pressable>
 
-        <Pressable
-          onPress={onFinish}
-          className="bg-red-500/10 rounded-2xl py-4 items-center border border-red-500/20"
-        >
-          <Text className="text-red-300 text-base">Finish</Text>
-        </Pressable>
+        <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center gap-2">
+            <Switch value={voiceEnabled} onValueChange={setVoiceEnabled} />
+            <Text className="text-gray-700">Voice guidance</Text>
+          </View>
+
+          <Pressable
+            onPress={onFinish}
+            className="rounded-full py-2 px-4 items-center border border-red-200 bg-red-50/70"
+          >
+            <Text className="text-red-600 text-base">Finish</Text>
+          </Pressable>
+        </View>
       </View>
+
+      <ConfirmModal
+        visible={showConfirm}
+        title="Finish session?"
+        message="Your session isn’t complete yet. Are you sure you want to finish?"
+        confirmText="Finish"
+        cancelText="Keep going"
+        onConfirm={() => {
+          setShowConfirm(false);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          setPaused(true);
+          router.navigate("/");
+        }}
+        onCancel={() => setShowConfirm(false)}
+      />
     </View>
   );
 }
