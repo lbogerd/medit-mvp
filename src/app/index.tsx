@@ -1,7 +1,8 @@
 import { AppButton } from "@/components/AppButton";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Link } from "expo-router";
-import React from "react";
-import { Text, View } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import { Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function Page() {
@@ -15,17 +16,82 @@ export default function Page() {
 }
 
 function Content() {
+  const [minutesText, setMinutesText] = useState<string>("");
+
+  // Load saved preference
+  useEffect(() => {
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem("pref:minutes");
+        if (stored) setMinutesText(String(stored));
+        else setMinutesText("10");
+      } catch {
+        setMinutesText("10");
+      }
+    })();
+  }, []);
+
+  // Keep only digits
+  const onChangeMinutes = (txt: string) => {
+    const digits = txt.replace(/[^0-9]/g, "");
+    setMinutesText(digits);
+  };
+
+  // Parsed + clamped value used for navigation
+  const minutesValue = useMemo(() => {
+    const n = parseInt(minutesText || "", 10);
+    if (!Number.isFinite(n)) return 10;
+    return Math.max(1, Math.min(180, n));
+  }, [minutesText]);
+
+  // Persist changes (debounced-ish via effect)
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        if (!alive) return;
+        await AsyncStorage.setItem("pref:minutes", String(minutesValue));
+      } catch {}
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [minutesValue]);
+
   return (
     <View className="flex-1">
       <Text className="text-center text-lg font-bold mt-4">
         Start a new meditation session
       </Text>
 
-      <View className="mt-8 flex flex-col items-center gap-4">
+      <View className="mt-6 px-6 items-stretch gap-2">
+        <Text className="text-sm text-gray-600 dark:text-gray-300">
+          Session length (minutes)
+        </Text>
+        <TextInput
+          value={minutesText}
+          onChangeText={onChangeMinutes}
+          inputMode="numeric"
+          keyboardType="number-pad"
+          maxLength={3}
+          placeholder="10"
+          placeholderTextColor="#9ca3af"
+          className="h-11 rounded-md border border-gray-300 dark:border-gray-700 px-3 text-base text-gray-900 dark:text-gray-50 bg-white dark:bg-gray-900"
+        />
+        <Text className="text-xs text-gray-500 dark:text-gray-400">
+          1–180 min
+        </Text>
+      </View>
+
+      <View className="mt-6 flex flex-col items-center gap-4">
         <Link
           href={{
             pathname: "/session",
-            params: { type: "timed", minutes: 10, intention: "grounded" },
+            params: {
+              type: "timed",
+              minutes: minutesValue,
+              intention: "grounded",
+            },
           }}
           asChild
         >
