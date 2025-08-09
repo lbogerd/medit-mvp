@@ -1,4 +1,5 @@
 import {
+  AudioSource,
   setAudioModeAsync,
   useAudioPlayer,
   useAudioPlayerStatus,
@@ -9,15 +10,19 @@ import { Pressable, Text, View } from "react-native";
 import { z } from "zod";
 
 // Map intention to intro file; use grounded as default for "none"
-const introMap = {
+const introMap: Record<Intention, AudioSource> = {
   grounded: require("../../../assets/grounded_intro.mp3"),
   focus: require("../../../assets/grounded_intro.mp3"), // TODO: replace with focus-specific if available
   gratitude: require("../../../assets/grounded_intro.mp3"), // TODO: replace with gratitude-specific if available
+  none: require("../../../assets/grounded_intro.mp3"), // TODO: replace with open-specific if available
 };
 
 function pad(n: number) {
   return n < 10 ? `0${n}` : `${n}`;
 }
+
+const IntentionSchema = z.enum(["grounded", "focus", "gratitude", "none"]);
+export type Intention = z.infer<typeof IntentionSchema>;
 
 // Use Zod to normalize/validate params coming as string|string[]
 const pickFirst = (v: unknown) => (Array.isArray(v) ? v[0] : v);
@@ -31,10 +36,7 @@ const ParamsSchema = z.object({
     .optional()
     .default(10),
   intention: z
-    .preprocess(
-      pickFirst,
-      z.enum(["grounded", "focus", "gratitude", "none"]).catch("grounded")
-    )
+    .preprocess(pickFirst, IntentionSchema.catch("grounded"))
     .optional()
     .default("grounded"),
 });
@@ -46,7 +48,7 @@ export default function SessionScreen() {
   const raw = useLocalSearchParams<{
     type?: string | string[];
     minutes?: string | string[];
-    intention?: string | string[];
+    intention?: Intention | Intention[];
   }>();
 
   const parsed = ParamsSchema.parse(raw);
