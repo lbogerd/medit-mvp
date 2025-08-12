@@ -1,11 +1,11 @@
 import { AppButton } from "@/components/AppButton";
 import { EtherealBackground } from "@/components/EtherealBackground";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Slider from "@react-native-community/slider";
 import { Link } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Slider from "@react-native-community/slider";
 
 export default function Page() {
   return (
@@ -61,14 +61,18 @@ function Content() {
     <View className="flex-1">
       <View className="mt-8 px-6 items-center">
         <Text className="text-2xl font-semibold text-gray-900">Serenity</Text>
-        <Text className="text-base text-gray-600 mt-1">Find your calm, one breath at a time.</Text>
+        <Text className="text-base text-gray-600 mt-1">
+          Find your calm, one breath at a time.
+        </Text>
       </View>
 
       <View className="mt-8 px-6">
         <View className="rounded-2xl border border-white/60 bg-white/70 shadow-glass p-5">
           <Text className="text-sm text-gray-700">Session length</Text>
           <View className="flex-row justify-between items-end mt-2">
-            <Text className="text-4xl font-semibold text-gray-900">{minutesValue}</Text>
+            <Text className="text-4xl font-semibold text-gray-900">
+              {minutesValue}
+            </Text>
             <Text className="text-gray-600 mb-1">minutes</Text>
           </View>
           <Slider
@@ -88,7 +92,14 @@ function Content() {
 
       <View className="mt-8 flex items-center">
         <Link
-          href={{ pathname: "/session", params: { type: "timed", minutes: minutesValue, intention: "grounded" } }}
+          href={{
+            pathname: "/session",
+            params: {
+              type: "timed",
+              minutes: minutesValue,
+              intention: "grounded",
+            },
+          }}
           asChild
         >
           <AppButton>
@@ -105,9 +116,13 @@ function Header() {
   return (
     <View style={{ paddingTop: top }}>
       <View className="px-4 h-16 flex-row items-center justify-between">
-        <Link className="font-semibold text-lg" href="/">Serenity</Link>
+        <Link className="font-semibold text-lg" href="/">
+          Serenity
+        </Link>
         <View className="flex-row gap-4">
-          <Link className="text-md text-gray-700" href="/about">About</Link>
+          <Link className="text-md text-gray-700" href="/about">
+            About
+          </Link>
         </View>
       </View>
     </View>
@@ -117,9 +132,14 @@ function Header() {
 function Footer() {
   const { bottom } = useSafeAreaInsets();
   return (
-    <View className="flex shrink-0 native:hidden" style={{ paddingBottom: bottom }}>
+    <View
+      className="flex shrink-0 native:hidden"
+      style={{ paddingBottom: bottom }}
+    >
       <View className="py-6 items-start px-4">
-        <Text className="text-center text-gray-600">© {new Date().getFullYear()} Serenity</Text>
+        <Text className="text-center text-gray-600">
+          © {new Date().getFullYear()} Serenity
+        </Text>
       </View>
     </View>
   );

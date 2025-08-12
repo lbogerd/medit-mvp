@@ -40,20 +40,23 @@ export function SessionProgressBar({
   const outroFlex = Math.max(1, outroDuration || 1);
 
   return (
-  <View className="w-full mt-6" style={{ height: 18 }}>
+    <View className="w-full mt-6" style={{ height: 18 }}>
       <View className="relative w-full h-full">
         {/* Background segmented bar */}
         <View className="absolute inset-0 flex-row overflow-hidden rounded-full">
-      <View className="bg-gray-200" style={{ flex: introFlex }} />
-      <View className="bg-gray-300" style={{ flex: medFlex }} />
-      <View className="bg-gray-200" style={{ flex: outroFlex }} />
+          <View className="bg-gray-200" style={{ flex: introFlex }} />
+          <View className="bg-gray-300" style={{ flex: medFlex }} />
+          <View className="bg-gray-200" style={{ flex: outroFlex }} />
         </View>
 
         {/* Progress fill overlay */}
         <View
           pointerEvents="none"
           className="absolute left-0 top-0 bottom-0 rounded-full"
-          style={{ width: `${progressFrac * 100}%`, backgroundColor: progressColor }}
+          style={{
+            width: `${progressFrac * 100}%`,
+            backgroundColor: progressColor,
+          }}
         />
 
         {/* Touch targets for each segment */}

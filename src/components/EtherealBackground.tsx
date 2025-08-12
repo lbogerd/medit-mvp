@@ -1,6 +1,6 @@
-import React, { useEffect, useRef } from "react";
-import { View, Animated, Easing } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import React, { useEffect, useRef } from "react";
+import { Animated, Easing, View } from "react-native";
 
 // Animated, softly drifting gradient blobs with subtle parallax
 export function EtherealBackground() {
@@ -21,7 +21,10 @@ export function EtherealBackground() {
   const t2 = a.interpolate({ inputRange: [0, 1], outputRange: [10, 0] });
 
   return (
-    <View pointerEvents="none" className="absolute inset-0 overflow-hidden bg-sunset-50">
+    <View
+      pointerEvents="none"
+      className="absolute inset-0 overflow-hidden bg-sunset-50"
+    >
       {/* Base vertical gradient */}
       <LinearGradient
         colors={["#fff7f5", "#ffd2c5", "#ffb3a0"]}

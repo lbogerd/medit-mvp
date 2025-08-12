@@ -11,7 +11,8 @@ const colorByIntention: Record<Intention, string> = {
 };
 
 export function IntentionBadge({ value }: { value: Intention }) {
-  const label = value === "none" ? "Open" : value[0].toUpperCase() + value.slice(1);
+  const label =
+    value === "none" ? "Open" : value[0].toUpperCase() + value.slice(1);
   const cls = colorByIntention[value];
   return (
     <View className={`px-3 py-1 rounded-full border ${cls}`}>

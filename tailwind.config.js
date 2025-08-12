@@ -5,7 +5,18 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["Sora", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "Helvetica", "Arial", "Noto Sans", "sans-serif"],
+        sans: [
+          "Sora",
+          "ui-sans-serif",
+          "system-ui",
+          "-apple-system",
+          "Segoe UI",
+          "Roboto",
+          "Helvetica",
+          "Arial",
+          "Noto Sans",
+          "sans-serif",
+        ],
       },
       colors: {
         // Sunset palette
@@ -33,8 +44,8 @@ module.exports = {
       },
       borderRadius: {
         xl: "1rem",
-        '2xl': "1.25rem",
-        '3xl': "1.5rem",
+        "2xl": "1.25rem",
+        "3xl": "1.5rem",
       },
     },
   },

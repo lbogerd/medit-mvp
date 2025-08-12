@@ -1,18 +1,18 @@
-import { SessionProgressBar } from "@/components/SessionProgressBar";
-import { EtherealBackground } from "@/components/EtherealBackground";
-import { TimerRing } from "@/components/TimerRing";
-import { IntentionBadge } from "@/components/IntentionBadge";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { EtherealBackground } from "@/components/EtherealBackground";
+import { IntentionBadge } from "@/components/IntentionBadge";
+import { SessionProgressBar } from "@/components/SessionProgressBar";
+import { TimerRing } from "@/components/TimerRing";
 import {
   AudioSource,
   setAudioModeAsync,
   useAudioPlayer,
   useAudioPlayerStatus,
 } from "expo-audio";
+import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Switch, Text, View } from "react-native";
-import * as Haptics from "expo-haptics";
 import { z } from "zod";
 
 // Map intention to intro file; use grounded as default for "none"
@@ -132,7 +132,13 @@ export default function SessionScreen() {
 
   // when user has started and audio is loaded, play intro once
   useEffect(() => {
-    if (!voiceEnabled || !started || !status?.isLoaded || introPlayedRef.current) return;
+    if (
+      !voiceEnabled ||
+      !started ||
+      !status?.isLoaded ||
+      introPlayedRef.current
+    )
+      return;
     introPlayedRef.current = true;
     fadeInAndPlay();
     return () => {
@@ -190,7 +196,8 @@ export default function SessionScreen() {
   // derived section boundaries
   const meditationStartSec = voiceEnabled ? introDurationSec : 0;
   const outroStartSec =
-    (voiceEnabled ? introDurationSec : 0) + (mode.type === "timed" ? baseSec : 0);
+    (voiceEnabled ? introDurationSec : 0) +
+    (mode.type === "timed" ? baseSec : 0);
 
   // If we cross into meditation, ensure intro is paused
   useEffect(() => {
@@ -317,7 +324,8 @@ export default function SessionScreen() {
 
       try {
         if (voiceEnabled && status?.isLoaded && player.playing) player.pause();
-        if (voiceEnabled && outroStatus?.isLoaded && outroPlayer.playing) outroPlayer.pause();
+        if (voiceEnabled && outroStatus?.isLoaded && outroPlayer.playing)
+          outroPlayer.pause();
       } catch {}
     }
   };
@@ -351,10 +359,12 @@ export default function SessionScreen() {
         player.seekTo(0);
 
         if (!paused && started) player.play();
-        if (voiceEnabled && outroStatus?.isLoaded && outroPlayer.playing) outroPlayer.pause();
+        if (voiceEnabled && outroStatus?.isLoaded && outroPlayer.playing)
+          outroPlayer.pause();
       } else if (section === "meditation") {
         if (voiceEnabled && status?.isLoaded && player.playing) player.pause();
-        if (voiceEnabled && outroStatus?.isLoaded && outroPlayer.playing) outroPlayer.pause();
+        if (voiceEnabled && outroStatus?.isLoaded && outroPlayer.playing)
+          outroPlayer.pause();
       } else if (section === "outro") {
         if (voiceEnabled && status?.isLoaded && player.playing) player.pause();
         if (voiceEnabled && outroStatus?.isLoaded) {
@@ -412,7 +422,9 @@ export default function SessionScreen() {
           onPress={onPrimaryPress}
           className="rounded-full py-4 items-center border border-white/60 bg-white/70 shadow-glass"
         >
-          <Text className="text-gray-900 text-lg font-medium">{primaryLabel}</Text>
+          <Text className="text-gray-900 text-lg font-medium">
+            {primaryLabel}
+          </Text>
         </Pressable>
 
         <View className="flex-row items-center justify-between">
@@ -438,7 +450,9 @@ export default function SessionScreen() {
         cancelText="Keep going"
         onConfirm={() => {
           setShowConfirm(false);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          Haptics.notificationAsync(
+            Haptics.NotificationFeedbackType.Success
+          ).catch(() => {});
           setPaused(true);
           router.navigate("/");
         }}

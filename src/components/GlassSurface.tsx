@@ -1,13 +1,15 @@
+import { BlurView } from "expo-blur";
 import React from "react";
 import { Platform, View, ViewProps } from "react-native";
-import { BlurView } from "expo-blur";
 
 export function GlassSurface({ style, children, ...rest }: ViewProps) {
   const content = (
     <View
       style={style}
       {...rest}
-      className={"rounded-2xl border border-white/60 shadow-glass bg-white/60 overflow-hidden"}
+      className={
+        "rounded-2xl border border-white/60 shadow-glass bg-white/60 overflow-hidden"
+      }
     >
       {children}
     </View>
@@ -23,5 +25,9 @@ export function GlassSurface({ style, children, ...rest }: ViewProps) {
   }
 
   // Web relies on CSS .glass class from global.css via tailwind className
-  return <View className="glass rounded-2xl border shadow-glass" style={style}>{children}</View>;
+  return (
+    <View className="glass rounded-2xl border shadow-glass" style={style}>
+      {children}
+    </View>
+  );
 }

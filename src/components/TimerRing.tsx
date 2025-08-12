@@ -25,7 +25,14 @@ export function TimerRing({
   return (
     <View style={{ width: size, height: size }}>
       <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <Circle cx={size / 2} cy={size / 2} r={r} stroke={trackColor} strokeWidth={stroke} fill="none" />
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          stroke={trackColor}
+          strokeWidth={stroke}
+          fill="none"
+        />
         <Circle
           cx={size / 2}
           cy={size / 2}
