@@ -111,6 +111,7 @@ export default function SessionScreen() {
   // track whether the session has started (user click) and if intro has been played once
   const [started, setStarted] = useState(false);
   const introPlayedRef = useRef(false);
+  const outroStartedRef = useRef(false);
 
   // helper to fade in and play intro
   const fadeInAndPlay = async () => {
@@ -210,7 +211,7 @@ export default function SessionScreen() {
   }, [elapsed, meditationStartSec, status?.isLoaded, voiceEnabled]);
 
   // Auto-play outro when entering outro section for timed sessions
-  const outroStartedRef = useRef(false);
+  // (moved above) outroStartedRef tracks first start of outro
   const fadeInAndPlayOutro = async () => {
     try {
       outroPlayer.volume = 0;
@@ -279,13 +280,42 @@ export default function SessionScreen() {
     }
   }, [finished]);
 
+  const resetAudioFlags = () => {
+    introPlayedRef.current = false;
+    outroStartedRef.current = false;
+    try {
+      if (voiceEnabled && status?.isLoaded) {
+        // Seek intro back to start so it can replay
+        player.seekTo(0);
+        player.pause();
+      }
+      if (voiceEnabled && outroStatus?.isLoaded) {
+        outroPlayer.seekTo(0);
+        outroPlayer.pause();
+      }
+    } catch {}
+  };
+
+  // When toggling voice guidance on after it was off, allow intro to play again.
+  useEffect(() => {
+    if (!voiceEnabled) return; // only care when enabling
+    // If user has not progressed beyond intro phase we can replay it
+    if (elapsed < meditationStartSec) {
+      introPlayedRef.current = false;
+    }
+  }, [voiceEnabled]);
+
   const onPrimaryPress = async () => {
     // first click: start timer + play intro with fade
     if (!started) {
       setStarted(true);
       setPaused(false);
+
+      // ensure flags are reset for a brand new start
+      resetAudioFlags();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       if (voiceEnabled && status?.isLoaded) await fadeInAndPlay();
+
       return;
     }
 
@@ -357,6 +387,9 @@ export default function SessionScreen() {
     try {
       if (voiceEnabled && section === "intro" && status?.isLoaded) {
         player.seekTo(0);
+
+        // allow intro to replay when seeking back
+        introPlayedRef.current = false;
 
         if (!paused && started) player.play();
         if (voiceEnabled && outroStatus?.isLoaded && outroPlayer.playing)
