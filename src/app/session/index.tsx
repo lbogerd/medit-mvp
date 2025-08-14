@@ -23,13 +23,20 @@ const introMap: Record<Intention, AudioSource> = {
   none: require("../../../assets/grounded_intro.mp3"), // TODO: replace with open-specific if available
 };
 
-// Map intention to outro file; default to grounded outro when unknown
-const outroMap: Record<Intention, AudioSource> = {
-  grounded: require("../../../assets/grounded_outro.mp3"),
-  focus: require("../../../assets/grounded_outro.mp3"),
-  gratitude: require("../../../assets/grounded_outro.mp3"),
-  none: require("../../../assets/grounded_outro.mp3"),
+// Map intention to outro files (two-part outro with gap)
+const outroPart1Map: Record<Intention, AudioSource> = {
+  grounded: require("../../../assets/grounded_outro_pt1.mp3"),
+  focus: require("../../../assets/grounded_outro_pt1.mp3"),
+  gratitude: require("../../../assets/grounded_outro_pt1.mp3"),
+  none: require("../../../assets/grounded_outro_pt1.mp3"),
 };
+const outroPart2Map: Record<Intention, AudioSource> = {
+  grounded: require("../../../assets/grounded_outro_pt2.mp3"),
+  focus: require("../../../assets/grounded_outro_pt2.mp3"),
+  gratitude: require("../../../assets/grounded_outro_pt2.mp3"),
+  none: require("../../../assets/grounded_outro_pt2.mp3"),
+};
+const OUTRO_GAP_SEC = 20; // silent pause between part1 and part2
 
 function pad(n: number) {
   return n < 10 ? `0${n}` : `${n}`;
@@ -86,10 +93,17 @@ export default function SessionScreen() {
   const player = useAudioPlayer(introSource);
   const status = useAudioPlayerStatus(player);
 
-  // setup audio player for outro
-  const outroSource = voiceEnabled ? outroMap[parsed.intention] : (null as any);
-  const outroPlayer = useAudioPlayer(outroSource);
-  const outroStatus = useAudioPlayerStatus(outroPlayer);
+  // setup audio players for two-part outro
+  const outroPart1Source = voiceEnabled
+    ? outroPart1Map[parsed.intention]
+    : (null as any);
+  const outroPart2Source = voiceEnabled
+    ? outroPart2Map[parsed.intention]
+    : (null as any);
+  const outroPart1Player = useAudioPlayer(outroPart1Source);
+  const outroPart2Player = useAudioPlayer(outroPart2Source);
+  const outroPart1Status = useAudioPlayerStatus(outroPart1Player);
+  const outroPart2Status = useAudioPlayerStatus(outroPart2Player);
 
   // ensure playback works with device silent switch
   useEffect(() => {
@@ -103,7 +117,10 @@ export default function SessionScreen() {
         player.pause();
       } catch {}
       try {
-        outroPlayer.pause();
+        outroPart1Player.pause();
+      } catch {}
+      try {
+        outroPart2Player.pause();
       } catch {}
     };
   }, []);
@@ -111,7 +128,8 @@ export default function SessionScreen() {
   // track whether the session has started (user click) and if intro has been played once
   const [started, setStarted] = useState(false);
   const introPlayedRef = useRef(false);
-  const outroStartedRef = useRef(false);
+  const outroStartedRef = useRef(false); // part1 started
+  const outroPart2StartedRef = useRef(false); // part2 started after gap
 
   // helper to fade in and play intro
   const fadeInAndPlay = async () => {
@@ -162,20 +180,27 @@ export default function SessionScreen() {
     }
   }, [status?.isLoaded, player.duration]);
 
-  // Track outro duration (in seconds)
-  const [outroDurationSec, setOutroDurationSec] = useState(0);
+  // Track outro part durations (in seconds)
+  const [outroPart1DurationSec, setOutroPart1DurationSec] = useState(0);
+  const [outroPart2DurationSec, setOutroPart2DurationSec] = useState(0);
   useEffect(() => {
-    if (!outroStatus?.isLoaded) return;
-    const duration = Number(outroPlayer.duration ?? 0);
-    if (Number.isFinite(duration) && duration > 0) {
-      setOutroDurationSec(Math.round(duration));
-    }
-  }, [outroStatus?.isLoaded, outroPlayer.duration]);
+    if (!outroPart1Status?.isLoaded) return;
+    const d = Number(outroPart1Player.duration ?? 0);
+    if (Number.isFinite(d) && d > 0) setOutroPart1DurationSec(Math.round(d));
+  }, [outroPart1Status?.isLoaded, outroPart1Player.duration]);
+  useEffect(() => {
+    if (!outroPart2Status?.isLoaded) return;
+    const d = Number(outroPart2Player.duration ?? 0);
+    if (Number.isFinite(d) && d > 0) setOutroPart2DurationSec(Math.round(d));
+  }, [outroPart2Status?.isLoaded, outroPart2Player.duration]);
 
   const baseSec = mode.type === "timed" ? Math.max(1, mode.minutes) * 60 : 0;
+  const combinedOutroSec = voiceEnabled
+    ? outroPart1DurationSec + OUTRO_GAP_SEC + outroPart2DurationSec
+    : 0;
   const totalSec =
     mode.type === "timed"
-      ? baseSec + (voiceEnabled ? introDurationSec + outroDurationSec : 0)
+      ? baseSec + (voiceEnabled ? introDurationSec + combinedOutroSec : 0)
       : Infinity;
 
   const [elapsed, setElapsed] = useState(0);
@@ -212,19 +237,34 @@ export default function SessionScreen() {
 
   // Auto-play outro when entering outro section for timed sessions
   // (moved above) outroStartedRef tracks first start of outro
-  const fadeInAndPlayOutro = async () => {
+  const fadeInAndPlayOutroPart1 = async () => {
     try {
-      outroPlayer.volume = 0;
-      outroPlayer.play();
+      outroPart1Player.volume = 0;
+      outroPart1Player.play();
       const steps = 20,
         dur = 600,
         stepMs = dur / steps;
       for (let i = 1; i <= steps; i++) {
-        outroPlayer.volume = (0.85 * i) / steps;
+        outroPart1Player.volume = (0.85 * i) / steps;
         await new Promise((r) => setTimeout(r, stepMs));
       }
     } catch (e) {
-      console.warn("Outro play failed:", e);
+      console.warn("Outro part1 play failed:", e);
+    }
+  };
+  const fadeInAndPlayOutroPart2 = async () => {
+    try {
+      outroPart2Player.volume = 0;
+      outroPart2Player.play();
+      const steps = 20,
+        dur = 600,
+        stepMs = dur / steps;
+      for (let i = 1; i <= steps; i++) {
+        outroPart2Player.volume = (0.85 * i) / steps;
+        await new Promise((r) => setTimeout(r, stepMs));
+      }
+    } catch (e) {
+      console.warn("Outro part2 play failed:", e);
     }
   };
 
@@ -234,25 +274,44 @@ export default function SessionScreen() {
       paused ||
       mode.type !== "timed" ||
       !voiceEnabled ||
-      !outroStatus?.isLoaded ||
-      outroDurationSec <= 0
+      !outroPart1Status?.isLoaded ||
+      !outroPart2Status?.isLoaded ||
+      outroPart1DurationSec + outroPart2DurationSec <= 0
     )
       return;
     // if we are within the outro window and haven't started it yet
-    if (
-      elapsed >= outroStartSec &&
-      elapsed < outroStartSec + outroDurationSec &&
-      !outroStartedRef.current
-    ) {
-      outroStartedRef.current = true;
-      fadeInAndPlayOutro();
+    const outroWindowEnd =
+      outroStartSec +
+      outroPart1DurationSec +
+      OUTRO_GAP_SEC +
+      outroPart2DurationSec;
+    if (elapsed >= outroStartSec && elapsed < outroWindowEnd) {
+      // start part1
+      if (
+        !outroStartedRef.current &&
+        elapsed < outroStartSec + outroPart1DurationSec
+      ) {
+        outroStartedRef.current = true;
+        fadeInAndPlayOutroPart1();
+      } else if (
+        // gap ended -> start part2
+        outroStartedRef.current &&
+        !outroPart2StartedRef.current &&
+        elapsed >= outroStartSec + outroPart1DurationSec + OUTRO_GAP_SEC &&
+        elapsed < outroWindowEnd
+      ) {
+        outroPart2StartedRef.current = true;
+        fadeInAndPlayOutroPart2();
+      }
     }
   }, [
     started,
     paused,
     elapsed,
-    outroStatus?.isLoaded,
-    outroDurationSec,
+    outroPart1Status?.isLoaded,
+    outroPart2Status?.isLoaded,
+    outroPart1DurationSec,
+    outroPart2DurationSec,
     outroStartSec,
     mode.type,
   ]);
@@ -283,15 +342,20 @@ export default function SessionScreen() {
   const resetAudioFlags = () => {
     introPlayedRef.current = false;
     outroStartedRef.current = false;
+    outroPart2StartedRef.current = false;
     try {
       if (voiceEnabled && status?.isLoaded) {
         // Seek intro back to start so it can replay
         player.seekTo(0);
         player.pause();
       }
-      if (voiceEnabled && outroStatus?.isLoaded) {
-        outroPlayer.seekTo(0);
-        outroPlayer.pause();
+      if (voiceEnabled && outroPart1Status?.isLoaded) {
+        outroPart1Player.seekTo(0);
+        outroPart1Player.pause();
+      }
+      if (voiceEnabled && outroPart2Status?.isLoaded) {
+        outroPart2Player.seekTo(0);
+        outroPart2Player.pause();
       }
     } catch {}
   };
@@ -325,10 +389,15 @@ export default function SessionScreen() {
       Haptics.selectionAsync().catch(() => {});
       try {
         const inIntro = elapsed < meditationStartSec;
+        const outroWindowEnd =
+          outroStartSec +
+          outroPart1DurationSec +
+          OUTRO_GAP_SEC +
+          outroPart2DurationSec;
         const inOutro =
           mode.type === "timed" &&
           elapsed >= outroStartSec &&
-          elapsed < outroStartSec + outroDurationSec;
+          elapsed < outroWindowEnd;
 
         if (
           inIntro &&
@@ -338,14 +407,27 @@ export default function SessionScreen() {
           player.currentTime < (player.duration ?? Infinity)
         ) {
           player.play();
-        } else if (
-          inOutro &&
-          voiceEnabled &&
-          outroStatus?.isLoaded &&
-          outroPlayer.paused &&
-          outroPlayer.currentTime < (outroPlayer.duration ?? Infinity)
-        ) {
-          outroPlayer.play();
+        } else if (inOutro && voiceEnabled) {
+          // Decide which part to resume
+          const part1End = outroStartSec + outroPart1DurationSec;
+          const part2Start = part1End + OUTRO_GAP_SEC;
+          if (
+            elapsed < part1End &&
+            outroPart1Status?.isLoaded &&
+            outroPart1Player.paused &&
+            outroPart1Player.currentTime <
+              (outroPart1Player.duration ?? Infinity)
+          ) {
+            outroPart1Player.play();
+          } else if (
+            elapsed >= part2Start &&
+            outroPart2Status?.isLoaded &&
+            outroPart2Player.paused &&
+            outroPart2Player.currentTime <
+              (outroPart2Player.duration ?? Infinity)
+          ) {
+            outroPart2Player.play();
+          }
         }
       } catch {}
     } else {
@@ -354,8 +436,18 @@ export default function SessionScreen() {
 
       try {
         if (voiceEnabled && status?.isLoaded && player.playing) player.pause();
-        if (voiceEnabled && outroStatus?.isLoaded && outroPlayer.playing)
-          outroPlayer.pause();
+        if (
+          voiceEnabled &&
+          outroPart1Status?.isLoaded &&
+          outroPart1Player.playing
+        )
+          outroPart1Player.pause();
+        if (
+          voiceEnabled &&
+          outroPart2Status?.isLoaded &&
+          outroPart2Player.playing
+        )
+          outroPart2Player.pause();
       } catch {}
     }
   };
@@ -392,17 +484,48 @@ export default function SessionScreen() {
         introPlayedRef.current = false;
 
         if (!paused && started) player.play();
-        if (voiceEnabled && outroStatus?.isLoaded && outroPlayer.playing)
-          outroPlayer.pause();
+        if (
+          voiceEnabled &&
+          outroPart1Status?.isLoaded &&
+          outroPart1Player.playing
+        )
+          outroPart1Player.pause();
+        if (
+          voiceEnabled &&
+          outroPart2Status?.isLoaded &&
+          outroPart2Player.playing
+        )
+          outroPart2Player.pause();
       } else if (section === "meditation") {
         if (voiceEnabled && status?.isLoaded && player.playing) player.pause();
-        if (voiceEnabled && outroStatus?.isLoaded && outroPlayer.playing)
-          outroPlayer.pause();
+        if (
+          voiceEnabled &&
+          outroPart1Status?.isLoaded &&
+          outroPart1Player.playing
+        )
+          outroPart1Player.pause();
+        if (
+          voiceEnabled &&
+          outroPart2Status?.isLoaded &&
+          outroPart2Player.playing
+        )
+          outroPart2Player.pause();
       } else if (section === "outro") {
         if (voiceEnabled && status?.isLoaded && player.playing) player.pause();
-        if (voiceEnabled && outroStatus?.isLoaded) {
-          outroPlayer.seekTo(0);
-          if (!paused && started) outroPlayer.play();
+        if (voiceEnabled) {
+          const part1End = outroStartSec + outroPart1DurationSec;
+          const part2Start = part1End + OUTRO_GAP_SEC;
+          if (elapsed < part1End) {
+            if (outroPart1Status?.isLoaded) {
+              outroPart1Player.seekTo(0);
+              if (!paused && started) outroPart1Player.play();
+            }
+          } else if (elapsed >= part2Start) {
+            if (outroPart2Status?.isLoaded) {
+              outroPart2Player.seekTo(0);
+              if (!paused && started) outroPart2Player.play();
+            }
+          }
         }
       }
     } catch {}
@@ -442,7 +565,7 @@ export default function SessionScreen() {
         <SessionProgressBar
           introDuration={voiceEnabled ? introDurationSec : 0}
           meditationDuration={meditationDurationSec}
-          outroDuration={voiceEnabled ? outroDurationSec : 0}
+          outroDuration={voiceEnabled ? combinedOutroSec : 0}
           elapsed={elapsed}
           onSeekTo={onSeekTo}
           progressColor={accentByIntention[parsed.intention]}
